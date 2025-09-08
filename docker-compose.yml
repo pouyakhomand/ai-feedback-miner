@@ -18,10 +18,10 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - PORT=8000
-      - MONGODB_URI=mongodb://mongo:27017/ai_feedback_miner
-      - CORS_ORIGIN=http://localhost:3000
-      - NODE_ENV=production
+      - PORT=${PORT:-8000}
+      - MONGODB_URI=${MONGODB_URI:-mongodb://mongo:27017/ai_feedback_miner}
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3000}
+      - NODE_ENV=${NODE_ENV:-production}
     depends_on:
       - mongo
     volumes:
@@ -37,6 +37,7 @@ services:
       - ./brain:/app
     environment:
       - PYTHONPATH=/app
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
     command: python brain_server.py
 
   frontend:
@@ -46,7 +47,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NODE_ENV=production
+      - NODE_ENV=${NODE_ENV:-production}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     depends_on:
       - backend
 

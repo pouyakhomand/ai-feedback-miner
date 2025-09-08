@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-AI Feedback Miner Brain Service
-Called by Node.js backend to perform analysis
+AI Feedback Miner Brain Service - Hybrid Approach
+Efficient analysis using traditional ML + minimal LLM usage
+Reduces API calls from 11+ to just 2
 """
 
 import sys
@@ -14,27 +15,46 @@ import pandas as pd
 from sklearn.cluster import KMeans
 from sklearn.feature_extraction.text import TfidfVectorizer
 
-# Import Gemini analyzer
+# Import hybrid analyzer (efficient approach)
 try:
-    from gemini_analyzer import get_gemini_analyzer
-    GEMINI_AVAILABLE = True
+    from hybrid_analyzer import analyze_feedback_hybrid
+    HYBRID_AVAILABLE = True
+    print("Using hybrid analyzer (2 LLM calls max)", file=sys.stderr)
 except ImportError:
-    GEMINI_AVAILABLE = False
-    print("Error: Gemini analyzer is required but not available", file=sys.stderr)
-    sys.exit(1)
+    HYBRID_AVAILABLE = False
+    print("Warning: Hybrid analyzer not available, falling back to original", file=sys.stderr)
 
-# Global Gemini analyzer
-_gemini_analyzer = None
+# Fallback to original Gemini analyzer
+if not HYBRID_AVAILABLE:
+    try:
+        from gemini_analyzer import get_gemini_analyzer
+        GEMINI_AVAILABLE = True
+    except ImportError:
+        GEMINI_AVAILABLE = False
+        print("Error: No analyzer available", file=sys.stderr)
+        sys.exit(1)
 
-def get_gemini():
-    """Get Gemini analyzer instance"""
-    global _gemini_analyzer
-    if _gemini_analyzer is None:
-        _gemini_analyzer = get_gemini_analyzer()
-        if not _gemini_analyzer.available:
-            print("Error: Gemini API is not available. Please check your API key.", file=sys.stderr)
+# Global analyzer
+_analyzer = None
+
+def get_analyzer():
+    """Get analyzer instance (hybrid preferred, Gemini fallback)"""
+    global _analyzer
+    if _analyzer is None:
+        if HYBRID_AVAILABLE:
+            from hybrid_analyzer import get_hybrid_analyzer
+            _analyzer = get_hybrid_analyzer()
+            print("Initialized hybrid analyzer", file=sys.stderr)
+        elif GEMINI_AVAILABLE:
+            _analyzer = get_gemini_analyzer()
+            if not _analyzer.available:
+                print("Error: Gemini API is not available. Please check your API key.", file=sys.stderr)
+                sys.exit(1)
+            print("Initialized Gemini analyzer (fallback)", file=sys.stderr)
+        else:
+            print("Error: No analyzer available", file=sys.stderr)
             sys.exit(1)
-    return _gemini_analyzer
+    return _analyzer
 
 def clean_text(text: str) -> str:
     """Clean and normalize text"""
@@ -95,6 +115,60 @@ def auto_label_clusters(texts: List[str], labels: np.ndarray, top_k: int = 3) ->
     
     return label_summaries
 
+# Fallback functions for Gemini analyzer
+def get_sentiment_batch(texts: List[str]) -> List[Dict[str, Any]]:
+    """Get sentiment scores using Gemini batch processing (fallback)"""
+    if not GEMINI_AVAILABLE:
+        return [{"sentiment": 0.0, "confidence": 0.0, "reasoning": "Gemini not available"} for _ in texts]
+    
+    gemini = get_analyzer()
+    results = gemini.analyze_sentiment_batch(texts)
+    return [{
+        "score": result["sentiment"],
+        "confidence": result["confidence"],
+        "reasoning": result["reasoning"],
+        "method": "gemini"
+    } for result in results]
+
+def auto_label_clusters(texts: List[str], labels: np.ndarray, top_k: int = 3) -> Dict[int, Dict[str, Any]]:
+    """Generate cluster labels using Gemini (fallback)"""
+    if not GEMINI_AVAILABLE:
+        return {}
+    
+    df = pd.DataFrame({"text": texts, "label": labels})
+    label_to_texts = {int(l): df[df.label == l]["text"].tolist() for l in sorted(df.label.unique())}
+    
+    gemini = get_analyzer()
+    enhanced_labels = gemini.enhance_cluster_labels(label_to_texts)
+    
+    label_summaries = {}
+    for cluster_id, enhanced_data in enhanced_labels.items():
+        label_summaries[cluster_id] = {
+            "keywords": enhanced_data["keywords"],
+            "label": enhanced_data["label"],
+            "description": enhanced_data.get("description", ""),
+            "sentiment": enhanced_data.get("sentiment", "neutral"),
+            "method": "gemini"
+        }
+    
+    return label_summaries
+
+def clean_text(text: str) -> str:
+    """Clean and normalize text"""
+    if not isinstance(text, str):
+        return ""
+    text = text.lower()
+    text = re.sub(r"https?://\S+", " ", text)
+    text = re.sub(r"[^a-z0-9\s]", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+def get_embeddings(texts: List[str]) -> np.ndarray:
+    """Get embeddings using TF-IDF"""
+    vectorizer = TfidfVectorizer(max_features=1000, stop_words='english')
+    tfidf_matrix = vectorizer.fit_transform(texts)
+    return tfidf_matrix.toarray()
+
 def compute_roi(volume: int, max_volume: int, avg_sentiment: float, weight: float = 1.0) -> float:
     """Compute ROI score based on volume and sentiment"""
     if max_volume <= 0:
@@ -105,7 +179,21 @@ def compute_roi(volume: int, max_volume: int, avg_sentiment: float, weight: floa
     return round(float(roi) * 100.0, 2)
 
 def analyze_feedback(feedbacks: List[str], n_clusters: int = 5) -> Dict[str, Any]:
-    """Main analysis function using Gemini"""
+    """Main analysis function - uses hybrid approach for efficiency"""
+    if len(feedbacks) == 0:
+        return {"items": [], "clusters": [], "insights": [], "themes": []}
+    
+    # Use hybrid analyzer if available (2 LLM calls max)
+    if HYBRID_AVAILABLE:
+        print(f"Using hybrid analyzer for {len(feedbacks)} feedback items", file=sys.stderr)
+        return analyze_feedback_hybrid(feedbacks, n_clusters)
+    
+    # Fallback to original Gemini approach (11+ LLM calls)
+    print(f"Using Gemini analyzer (fallback) for {len(feedbacks)} feedback items", file=sys.stderr)
+    return analyze_feedback_gemini_fallback(feedbacks, n_clusters)
+
+def analyze_feedback_gemini_fallback(feedbacks: List[str], n_clusters: int = 5) -> Dict[str, Any]:
+    """Fallback analysis using original Gemini approach"""
     if len(feedbacks) == 0:
         return {"items": [], "clusters": [], "insights": [], "themes": []}
     

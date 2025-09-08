@@ -17,12 +17,15 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
+# Download NLTK data
+RUN python -c "import nltk; nltk.download('stopwords')"
+
 # Copy app code AFTER deps
 COPY . .
 
 RUN chmod +x analyze.py
 
-# Environment variables for Gemini API (optional)
-ENV GEMINI_API_KEY="AIzaSyBRHJCZLnximTAddXpMZ0KyGB4oj48gWlc"
+# Environment variables for Gemini API (set via docker-compose)
+ENV GEMINI_API_KEY=""
 
 CMD ["python", "brain_server.py"]
