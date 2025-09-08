@@ -1,0 +1,55 @@
+﻿version: "3.8"
+services:
+  mongo:
+    image: mongo:6
+    container_name: ai-feedback-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=ai_feedback_miner
+
+  backend:
+    build: ./backend
+    container_name: ai-feedback-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - MONGODB_URI=mongodb://mongo:27017/ai_feedback_miner
+      - CORS_ORIGIN=http://localhost:3000
+      - NODE_ENV=production
+    depends_on:
+      - mongo
+    volumes:
+      - ./backend/uploads:/app/uploads
+
+  brain:
+    build: ./brain
+    container_name: ai-feedback-brain
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./brain:/app
+    environment:
+      - PYTHONPATH=/app
+    command: python brain_server.py
+
+  frontend:
+    build: ./frontend
+    container_name: ai-feedback-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+    depends_on:
+      - backend
+
+volumes:
+  mongo_data:
+    driver: local

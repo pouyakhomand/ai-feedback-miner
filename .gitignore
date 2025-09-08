@@ -1,0 +1,39 @@
+﻿# Node
+node_modules/
+.next/
+.out/
+.vercel/
+.turbo/
+.DS_Store
+
+# Frontend build
+frontend/.next/
+frontend/node_modules/
+frontend/.turbo/
+frontend/.vercel/
+frontend/.env.local
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.env
+
+# Backend
+backend/.venv/
+backend/__pycache__/
+backend/.env
+
+# Data & artifacts
+*.sqlite
+*.db
+/data/**/*.parquet
+/data/**/*.feather
+/data/**/*.pkl
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
