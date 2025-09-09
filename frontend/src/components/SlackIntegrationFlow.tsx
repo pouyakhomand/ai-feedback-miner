@@ -3,11 +3,7 @@
 import { useState } from "react";
 
 interface SlackIntegrationFlowProps {
-  onConnect: (data: {
-    botToken: string;
-    channels: string[];
-    workspaceId: string;
-  }) => void;
+  onConnect: (data: { botToken: string; workspaceId: string }) => void;
   onCancel: () => void;
   loading: boolean;
 }
@@ -21,40 +17,13 @@ export default function SlackIntegrationFlow({
   const [formData, setFormData] = useState({
     botToken: "",
     workspaceId: "",
-    channels: [] as string[],
-    newChannel: "",
   });
 
-  const handleChannelAdd = () => {
-    if (
-      formData.newChannel.trim() &&
-      !formData.channels.includes(formData.newChannel.trim())
-    ) {
-      setFormData((prev) => ({
-        ...prev,
-        channels: [...prev.channels, prev.newChannel.trim()],
-        newChannel: "",
-      }));
-    }
-  };
-
-  const handleChannelRemove = (channel: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      channels: prev.channels.filter((c) => c !== channel),
-    }));
-  };
-
   const handleSubmit = () => {
-    if (
-      formData.botToken &&
-      formData.workspaceId &&
-      formData.channels.length > 0
-    ) {
+    if (formData.botToken && formData.workspaceId) {
       onConnect({
         botToken: formData.botToken,
         workspaceId: formData.workspaceId,
-        channels: formData.channels,
       });
     }
   };
@@ -128,6 +97,11 @@ export default function SlackIntegrationFlow({
                   ,{" "}
                   <code className="bg-blue-100 px-1 rounded">
                     channels:history
+                  </code>
+                  ,{" "}
+                  <code className="bg-blue-100 px-1 rounded">groups:read</code>,{" "}
+                  <code className="bg-blue-100 px-1 rounded">
+                    groups:history
                   </code>
                 </li>
                 <li>Install app to workspace</li>
@@ -216,6 +190,34 @@ export default function SlackIntegrationFlow({
               Your workspace ID starts with &quot;T&quot; and identifies your
               Slack workspace
             </p>
+
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mt-4">
+              <div className="flex items-start">
+                <svg
+                  className="w-5 h-5 text-green-600 mr-3 mt-0.5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <div>
+                  <h5 className="text-sm font-medium text-green-900">
+                    Auto-Detection Enabled
+                  </h5>
+                  <p className="text-sm text-green-700 mt-1">
+                    Once connected, the bot will automatically monitor any
+                    channel it&apos;s added to. Simply invite the bot to
+                    channels you want to monitor!
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="flex justify-between">
@@ -226,128 +228,8 @@ export default function SlackIntegrationFlow({
               Previous
             </button>
             <button
-              onClick={() => setStep(3)}
-              disabled={!formData.workspaceId}
-              className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Next Step
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Step 3: Select Channels */}
-      {step === 3 && (
-        <div className="space-y-4">
-          <div>
-            <h4 className="font-medium text-gray-900 mb-2">
-              3. Select Channels to Monitor
-            </h4>
-            <p className="text-sm text-gray-600 mb-4">
-              Choose which Slack channels should be monitored for feedback.
-              Messages from these channels will be automatically analyzed.
-            </p>
-          </div>
-
-          <div className="space-y-3">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={formData.newChannel}
-                onChange={(e) =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    newChannel: e.target.value,
-                  }))
-                }
-                placeholder="Enter channel name (e.g., #general)"
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                onKeyPress={(e) => e.key === "Enter" && handleChannelAdd()}
-              />
-              <button
-                onClick={handleChannelAdd}
-                disabled={!formData.newChannel.trim()}
-                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Add
-              </button>
-            </div>
-
-            {formData.channels.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-gray-700">
-                  Selected Channels:
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {formData.channels.map((channel) => (
-                    <span
-                      key={channel}
-                      className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm"
-                    >
-                      {channel}
-                      <button
-                        onClick={() => handleChannelRemove(channel)}
-                        className="text-blue-600 hover:text-blue-800"
-                      >
-                        <svg
-                          className="w-3 h-3"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M6 18L18 6M6 6l12 12"
-                          />
-                        </svg>
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-            <div className="flex items-start">
-              <svg
-                className="w-5 h-5 text-yellow-600 mr-3 mt-0.5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
-                />
-              </svg>
-              <div>
-                <h5 className="text-sm font-medium text-yellow-900">
-                  Important:
-                </h5>
-                <p className="text-sm text-yellow-700 mt-1">
-                  Make sure your bot has been added to the channels you want to
-                  monitor. The bot can only read messages from channels
-                  it&apos;s a member of.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex justify-between">
-            <button
-              onClick={() => setStep(2)}
-              className="bg-gray-300 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-400"
-            >
-              Previous
-            </button>
-            <button
               onClick={handleSubmit}
-              disabled={formData.channels.length === 0 || loading}
+              disabled={!formData.workspaceId || loading}
               className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
               {loading ? (

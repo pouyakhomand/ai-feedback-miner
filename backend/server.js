@@ -60,7 +60,6 @@ const integrationSchema = new mongoose.Schema({
   config: {
     webhookUrl: String,
     botToken: String,
-    channels: [String],
     workspaceId: String,
     lastSync: Date,
   },
@@ -269,11 +268,15 @@ app.get("/integrations", async (req, res) => {
 
 app.post("/integrations/slack/connect", async (req, res) => {
   try {
-    const { botToken, channels, workspaceId } = req.body;
+    const { botToken, workspaceId } = req.body;
 
-    if (!botToken || !channels || !workspaceId) {
-      return res.status(400).json({ error: "Missing required fields" });
+    if (!botToken || !workspaceId) {
+      return res
+        .status(400)
+        .json({ error: "Missing required fields: botToken and workspaceId" });
     }
+
+    console.log("Connecting Slack integration...");
 
     // Check if Slack integration already exists
     let integration = await Integration.findOne({ type: "slack" });
@@ -283,7 +286,6 @@ app.post("/integrations/slack/connect", async (req, res) => {
       integration.status = "connected";
       integration.config = {
         botToken,
-        channels,
         workspaceId,
         lastSync: new Date(),
       };
@@ -296,7 +298,6 @@ app.post("/integrations/slack/connect", async (req, res) => {
         status: "connected",
         config: {
           botToken,
-          channels,
           workspaceId,
           lastSync: new Date(),
         },
@@ -306,13 +307,13 @@ app.post("/integrations/slack/connect", async (req, res) => {
     await integration.save();
 
     res.json({
-      message: "Slack integration connected successfully",
+      message:
+        "Slack integration connected successfully. Bot will automatically monitor channels it's added to.",
       integration: {
         id: integration._id,
         type: integration.type,
         name: integration.name,
         status: integration.status,
-        channels: integration.config.channels,
         lastSync: integration.config.lastSync,
       },
     });
@@ -333,7 +334,6 @@ app.post("/integrations/slack/disconnect", async (req, res) => {
     integration.status = "disconnected";
     integration.config = {
       botToken: "",
-      channels: [],
       workspaceId: "",
       lastSync: null,
     };
@@ -368,17 +368,34 @@ app.post("/webhooks/slack", async (req, res) => {
         status: "connected",
       });
 
-      if (integration && integration.config.channels.includes(event.channel)) {
-        // Save message as feedback
-        const feedback = new Feedback({
-          id: `slack_${event.ts}_${event.user}`,
-          text: event.text,
-          source: "slack",
-          time: new Date(parseFloat(event.ts) * 1000),
-        });
+      if (integration && integration.config.botToken) {
+        const channelId = event.channel;
 
-        await feedback.save();
-        console.log(`New Slack feedback saved: ${event.text}`);
+        // Get channel name and check if bot is a member
+        const channelName = await getSlackChannelName(
+          channelId,
+          integration.config.botToken
+        );
+
+        if (channelName) {
+          // Bot can access this channel, so it's a member - process the message
+          const feedback = new Feedback({
+            id: `slack_${event.ts}_${event.user}`,
+            text: event.text,
+            source: "slack",
+            time: new Date(parseFloat(event.ts) * 1000),
+          });
+
+          await feedback.save();
+          console.log(
+            `New Slack feedback saved from #${channelName}: ${event.text}`
+          );
+        } else {
+          // Bot cannot access this channel (not a member or channel doesn't exist)
+          console.log(
+            `Message from channel ${channelId} - bot not a member or channel not accessible`
+          );
+        }
       }
     }
 
@@ -412,6 +429,36 @@ app.get("/feedback/source/:source", async (req, res) => {
     res.status(500).json({ error: "Failed to get feedback by source" });
   }
 });
+
+// Helper function to get channel name from Slack API
+async function getSlackChannelName(channelId, botToken) {
+  const axios = require("axios");
+
+  try {
+    const response = await axios.get(
+      `https://slack.com/api/conversations.info`,
+      {
+        params: {
+          channel: channelId,
+        },
+        headers: {
+          Authorization: `Bearer ${botToken}`,
+        },
+        timeout: 10000, // 10 second timeout
+      }
+    );
+
+    if (response.data.ok && response.data.channel) {
+      return response.data.channel.name;
+    } else {
+      console.error("Slack API error:", response.data.error);
+      return null;
+    }
+  } catch (error) {
+    console.error("Slack API call error:", error.message);
+    return null;
+  }
+}
 
 // Helper function to call Python brain service
 async function callBrainService(texts, n_clusters) {

@@ -112,7 +112,6 @@ export default function IntegrationsPage() {
 
   const handleSlackConnect = async (formData: {
     botToken: string;
-    channels: string[];
     workspaceId: string;
   }) => {
     setLoading(true);

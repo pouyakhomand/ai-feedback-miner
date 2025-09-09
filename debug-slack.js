@@ -72,12 +72,13 @@ async function checkIntegrationStatus() {
 
     if (slackIntegration.status === "connected") {
       log(
-        `📋 Channels: ${slackIntegration.config.channels.join(", ")}`,
-        "blue"
-      );
-      log(
         `🕒 Last Sync: ${slackIntegration.config.lastSync || "Never"}`,
         "blue"
+      );
+
+      log(
+        `✅ Auto-detection enabled - bot monitors any channel it's added to`,
+        "green"
       );
     }
 
@@ -147,6 +148,36 @@ async function simulateSlackEvent() {
   }
 }
 
+async function testChannelIdResolution() {
+  log("\n🔍 Testing Channel Auto-Detection...", "blue");
+
+  try {
+    const integration = await checkIntegrationStatus();
+
+    if (!integration || integration.status !== "connected") {
+      log("❌ No connected Slack integration found", "red");
+      return false;
+    }
+
+    if (!integration.config.botToken) {
+      log("❌ No bot token found in integration", "red");
+      return false;
+    }
+
+    log(`✅ Bot token is configured`, "green");
+    log(
+      `✅ Auto-detection is enabled - bot will monitor any channel it's added to`,
+      "green"
+    );
+    log(`ℹ️  To test: Add bot to a channel and send a message`, "blue");
+
+    return true;
+  } catch (error) {
+    log(`❌ Failed to test channel auto-detection: ${error.message}`, "red");
+    return false;
+  }
+}
+
 async function testDatabaseConnection() {
   log("\n🔍 Testing Database Connection...", "blue");
 
@@ -184,7 +215,12 @@ async function runDiagnostics() {
   // Test 4: Existing Slack feedback
   const feedbackCount = await checkSlackFeedback();
 
-  // Test 5: Simulate event (only if webhook is working)
+  // Test 5: Test channel ID resolution (only if integration is connected)
+  if (integration && integration.status === "connected") {
+    await testChannelIdResolution();
+  }
+
+  // Test 6: Simulate event (only if webhook is working)
   if (webhookOk) {
     await simulateSlackEvent();
   }
@@ -265,6 +301,7 @@ module.exports = {
   checkIntegrationStatus,
   checkSlackFeedback,
   simulateSlackEvent,
+  testChannelIdResolution,
   testDatabaseConnection,
   runDiagnostics,
 };
