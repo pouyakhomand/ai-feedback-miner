@@ -57,6 +57,8 @@ export default function AnalysisPage() {
   const [filterSentiment, setFilterSentiment] = useState<
     "all" | "positive" | "negative" | "neutral"
   >("all");
+  const [dataSource, setDataSource] = useState<"database" | "file">("database");
+  const [fileData, setFileData] = useState<Record<string, string>[]>([]);
 
   // Utility functions
   const getSentimentColor = (sentiment: number) => {
@@ -151,6 +153,11 @@ export default function AnalysisPage() {
 
       const result = await response.json();
       console.log("Upload successful:", result);
+
+      // If analyzing from file, parse the CSV data
+      if (dataSource === "file") {
+        parseCSVFile();
+      }
     } catch (err) {
       if (err instanceof TypeError && err.message.includes("fetch")) {
         setError(
@@ -164,20 +171,61 @@ export default function AnalysisPage() {
     }
   };
 
+  const parseCSVFile = () => {
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      const lines = text.split("\n");
+      const headers = lines[0].split(",");
+      const data = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        if (lines[i].trim()) {
+          const values = lines[i].split(",");
+          const row: Record<string, string> = {};
+          headers.forEach((header, index) => {
+            row[header.trim()] = values[index]?.trim() || "";
+          });
+          if (row.text) {
+            data.push(row);
+          }
+        }
+      }
+
+      setFileData(data);
+    };
+    reader.readAsText(file);
+  };
+
   const analyzeFeedback = async () => {
     setAnalyzing(true);
     setError(null);
 
     try {
+      const requestBody: {
+        n_clusters: number;
+        limit: number;
+        dataSource: string;
+        fileData?: Record<string, string>[];
+      } = {
+        n_clusters: 5,
+        limit: 1000,
+        dataSource: dataSource,
+      };
+
+      // If analyzing from file, include file data
+      if (dataSource === "file" && fileData.length > 0) {
+        requestBody.fileData = fileData;
+      }
+
       const response = await fetch(`${API_URL}/analyze`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          n_clusters: 5,
-          limit: 1000,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -214,10 +262,65 @@ export default function AnalysisPage() {
         </p>
       </div>
 
+      {/* Data Source Selection */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <h2 className="text-xl font-semibold mb-4">Data Source</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div
+            className={`p-4 border-2 rounded-lg cursor-pointer transition-colors ${
+              dataSource === "database"
+                ? "border-blue-500 bg-blue-50"
+                : "border-gray-200 hover:border-gray-300"
+            }`}
+            onClick={() => setDataSource("database")}
+          >
+            <div className="flex items-center mb-2">
+              <input
+                type="radio"
+                checked={dataSource === "database"}
+                onChange={() => setDataSource("database")}
+                className="mr-3"
+              />
+              <h3 className="font-medium text-gray-900">Database</h3>
+            </div>
+            <p className="text-sm text-gray-600">
+              Analyze feedback stored in the database from all connected sources
+              (Slack, uploaded files, etc.)
+            </p>
+          </div>
+
+          <div
+            className={`p-4 border-2 rounded-lg cursor-pointer transition-colors ${
+              dataSource === "file"
+                ? "border-blue-500 bg-blue-50"
+                : "border-gray-200 hover:border-gray-300"
+            }`}
+            onClick={() => setDataSource("file")}
+          >
+            <div className="flex items-center mb-2">
+              <input
+                type="radio"
+                checked={dataSource === "file"}
+                onChange={() => setDataSource("file")}
+                className="mr-3"
+              />
+              <h3 className="font-medium text-gray-900">File Only</h3>
+            </div>
+            <p className="text-sm text-gray-600">
+              Analyze only the uploaded CSV file without saving to database
+            </p>
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Upload Section */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h2 className="text-xl font-semibold mb-4">Upload Feedback</h2>
+          <h2 className="text-xl font-semibold mb-4">
+            {dataSource === "database"
+              ? "Upload to Database"
+              : "Upload File for Analysis"}
+          </h2>
 
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -236,17 +339,42 @@ export default function AnalysisPage() {
             disabled={!file || uploading}
             className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {uploading ? "Uploading..." : "Upload File"}
+            {uploading
+              ? "Uploading..."
+              : dataSource === "database"
+              ? "Upload to Database"
+              : "Parse File"}
           </button>
+
+          {dataSource === "file" && fileData.length > 0 && (
+            <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+              <p className="text-sm text-green-800">
+                ✓ File parsed successfully: {fileData.length} feedback items
+                ready for analysis
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Analysis Section */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h2 className="text-xl font-semibold mb-4">Analyze Feedback</h2>
+          <h2 className="text-xl font-semibold mb-4">Run Analysis</h2>
+
+          <div className="mb-4">
+            <p className="text-sm text-gray-600 mb-2">
+              {dataSource === "database"
+                ? "Analyze all feedback in the database"
+                : fileData.length > 0
+                ? `Analyze ${fileData.length} items from uploaded file`
+                : "Upload a file first to analyze"}
+            </p>
+          </div>
 
           <button
             onClick={analyzeFeedback}
-            disabled={analyzing}
+            disabled={
+              analyzing || (dataSource === "file" && fileData.length === 0)
+            }
             className="w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {analyzing ? "Analyzing..." : "Run Analysis"}

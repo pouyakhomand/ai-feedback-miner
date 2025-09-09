@@ -14,8 +14,17 @@ interface DashboardStats {
   avgSentiment: number;
 }
 
+interface Integration {
+  type: string;
+  name: string;
+  status: string;
+  channels?: string[];
+  lastSync?: string;
+}
+
 export default function HomePage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,20 +35,33 @@ export default function HomePage() {
   const fetchDashboardStats = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_URL}/feedback/count`);
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch stats: ${response.status}`);
+      // Fetch feedback count and integrations in parallel
+      const [feedbackResponse, integrationsResponse] = await Promise.all([
+        fetch(`${API_URL}/feedback/count`),
+        fetch(`${API_URL}/integrations`),
+      ]);
+
+      if (!feedbackResponse.ok) {
+        throw new Error(`Failed to fetch stats: ${feedbackResponse.status}`);
       }
 
-      const data = await response.json();
+      const feedbackData = await feedbackResponse.json();
       setStats({
-        totalFeedback: data.count || 0,
+        totalFeedback: feedbackData.count || 0,
         totalClusters: 0, // Will be updated when analysis is available
         positiveFeedback: 0,
         negativeFeedback: 0,
         avgSentiment: 0,
       });
+
+      // Load integrations if available
+      if (integrationsResponse.ok) {
+        const integrationsData = await integrationsResponse.json();
+        setIntegrations(integrationsData || []);
+      } else {
+        setIntegrations([]);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load dashboard");
     } finally {
@@ -268,39 +290,72 @@ export default function HomePage() {
           </div>
         </div>
 
+        {/* Connected Integrations */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">
-            Recent Activity
+            Connected Integrations
           </h3>
-          <div className="space-y-3">
-            {stats?.totalFeedback === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <svg
-                  className="w-12 h-12 mx-auto mb-4 text-gray-300"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
+          {integrations && integrations.length > 0 ? (
+            <div className="space-y-3">
+              {integrations.map((integration) => (
+                <div
+                  key={integration.type}
+                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                  />
-                </svg>
-                <p>No feedback uploaded yet</p>
-                <p className="text-sm">
-                  Upload your first CSV file to get started
-                </p>
-              </div>
-            ) : (
-              <div className="text-sm text-gray-600">
-                <p>• {stats?.totalFeedback} feedback items uploaded</p>
-                <p>• Ready for analysis</p>
-                <p>• Connect integrations to automate data collection</p>
-              </div>
-            )}
-          </div>
+                  <div className="flex items-center">
+                    <span className="text-lg mr-3">
+                      {integration.type === "slack" ? "💬" : "🔗"}
+                    </span>
+                    <div>
+                      <p className="font-medium text-gray-900">
+                        {integration.name}
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        {integration.status === "connected"
+                          ? "Connected"
+                          : "Disconnected"}
+                        {integration.channels &&
+                          Array.isArray(integration.channels) &&
+                          integration.channels.length > 0 && (
+                            <span>
+                              {" "}
+                              • {integration.channels.length} channels
+                            </span>
+                          )}
+                      </p>
+                    </div>
+                  </div>
+                  <div
+                    className={`w-2 h-2 rounded-full ${
+                      integration.status === "connected"
+                        ? "bg-green-500"
+                        : "bg-gray-400"
+                    }`}
+                  ></div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <svg
+                className="w-12 h-12 mx-auto mb-4 text-gray-300"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+                />
+              </svg>
+              <p>No integrations connected</p>
+              <p className="text-sm">
+                Connect Slack to start collecting feedback automatically
+              </p>
+            </div>
+          )}
         </div>
       </div>
 

@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1.4
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -12,10 +11,15 @@ RUN apt-get update && apt-get install -y \
 # Copy requirements first for caching
 COPY requirements.txt .
 
-# Use pip cache mount
+# Set environment variables for better compatibility
+ENV PYTHONUNBUFFERED=1
+ENV PIP_NO_CACHE_DIR=1
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Use pip cache mount with pre-built wheels
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir --only-binary=all -r requirements.txt
 
 # Download NLTK data
 RUN python -c "import nltk; nltk.download('stopwords')"

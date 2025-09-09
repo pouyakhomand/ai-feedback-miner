@@ -11,7 +11,7 @@ export default function SettingsPage() {
     theme: "light",
   });
 
-  const handleSettingChange = (key: string, value: any) => {
+  const handleSettingChange = (key: string, value: string | boolean) => {
     setSettings((prev) => ({
       ...prev,
       [key]: value,

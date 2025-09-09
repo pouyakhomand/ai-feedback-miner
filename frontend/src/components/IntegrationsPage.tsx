@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import SlackIntegrationFlow from "./SlackIntegrationFlow";
 
 interface Integration {
   id: string;
@@ -9,6 +10,17 @@ interface Integration {
   icon: string;
   status: "connected" | "available" | "coming_soon";
   connectedAt?: string;
+  channels?: string[];
+  lastSync?: string;
+}
+
+interface SlackIntegration {
+  id: string;
+  type: string;
+  name: string;
+  status: string;
+  channels: string[];
+  lastSync: string;
 }
 
 const integrations: Integration[] = [
@@ -17,7 +29,7 @@ const integrations: Integration[] = [
     name: "Slack",
     description: "Connect Slack channels to automatically collect feedback",
     icon: "💬",
-    status: "coming_soon",
+    status: "available",
   },
   {
     id: "zendesk",
@@ -49,10 +61,137 @@ const integrations: Integration[] = [
   },
 ];
 
+// Get API URL from environment variable
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 export default function IntegrationsPage() {
   const [selectedIntegration, setSelectedIntegration] = useState<string | null>(
     null
   );
+  const [integrationsData, setIntegrationsData] =
+    useState<Integration[]>(integrations);
+  const [slackIntegration, setSlackIntegration] =
+    useState<SlackIntegration | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Load integrations on component mount
+  useEffect(() => {
+    loadIntegrations();
+  }, []);
+
+  const loadIntegrations = async () => {
+    try {
+      const response = await fetch(`${API_URL}/integrations`);
+      if (response.ok) {
+        const data = await response.json();
+        const slackIntegration = data.find(
+          (int: SlackIntegration) => int.type === "slack"
+        );
+
+        if (slackIntegration) {
+          setSlackIntegration(slackIntegration);
+          setIntegrationsData((prev) =>
+            prev.map((int) =>
+              int.id === "slack"
+                ? {
+                    ...int,
+                    status: "connected",
+                    channels: slackIntegration.channels,
+                    lastSync: slackIntegration.lastSync,
+                  }
+                : int
+            )
+          );
+        }
+      }
+    } catch (error) {
+      console.error("Failed to load integrations:", error);
+    }
+  };
+
+  const handleSlackConnect = async (formData: {
+    botToken: string;
+    channels: string[];
+    workspaceId: string;
+  }) => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`${API_URL}/integrations/slack/connect`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(formData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to connect Slack");
+      }
+
+      const result = await response.json();
+      setSlackIntegration(result.integration);
+      setIntegrationsData((prev) =>
+        prev.map((int) =>
+          int.id === "slack"
+            ? {
+                ...int,
+                status: "connected",
+                channels: result.integration.channels,
+                lastSync: result.integration.lastSync,
+              }
+            : int
+        )
+      );
+      setSelectedIntegration(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to connect Slack");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSlackDisconnect = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`${API_URL}/integrations/slack/disconnect`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to disconnect Slack");
+      }
+
+      setSlackIntegration(null);
+      setIntegrationsData((prev) =>
+        prev.map((int) =>
+          int.id === "slack"
+            ? {
+                ...int,
+                status: "available",
+                channels: undefined,
+                lastSync: undefined,
+              }
+            : int
+        )
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to disconnect Slack"
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -90,37 +229,58 @@ export default function IntegrationsPage() {
         </p>
       </div>
 
-      {/* Coming Soon Banner */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <div className="flex items-center">
-          <svg
-            className="w-5 h-5 text-blue-600 mr-3"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-          <div>
-            <h3 className="text-sm font-medium text-blue-900">
-              Integrations Coming Soon
-            </h3>
-            <p className="text-sm text-blue-700">
-              We're working on connecting your favorite tools. Slack integration
-              will be available first!
-            </p>
+      {/* Error Display */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-md p-4">
+          <div className="text-red-800">{error}</div>
+        </div>
+      )}
+
+      {/* Slack Integration Flow */}
+      {selectedIntegration === "slack" && (
+        <SlackIntegrationFlow
+          onConnect={handleSlackConnect}
+          onCancel={() => setSelectedIntegration(null)}
+          loading={loading}
+        />
+      )}
+
+      {/* Connected Integrations Status */}
+      {slackIntegration && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <span className="text-2xl mr-3">💬</span>
+              <div>
+                <h3 className="text-sm font-medium text-green-900">
+                  Slack Connected Successfully
+                </h3>
+                <p className="text-sm text-green-700">
+                  Monitoring {slackIntegration.channels?.length || 0} channels
+                  {slackIntegration.lastSync && (
+                    <span>
+                      {" "}
+                      • Last sync:{" "}
+                      {new Date(slackIntegration.lastSync).toLocaleString()}
+                    </span>
+                  )}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleSlackDisconnect}
+              disabled={loading}
+              className="text-red-600 hover:text-red-800 text-sm font-medium disabled:opacity-50"
+            >
+              Disconnect
+            </button>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Integration Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {integrations.map((integration) => (
+        {integrationsData.map((integration) => (
           <div
             key={integration.id}
             className={`bg-white rounded-lg shadow-sm border border-gray-200 p-6 transition-all ${
@@ -129,8 +289,14 @@ export default function IntegrationsPage() {
                 : "hover:shadow-md cursor-pointer"
             }`}
             onClick={() => {
-              if (integration.status !== "coming_soon") {
+              if (integration.status === "available") {
                 setSelectedIntegration(integration.id);
+              } else if (
+                integration.status === "connected" &&
+                integration.id === "slack"
+              ) {
+                // Show connected status or allow disconnect
+                return;
               }
             }}
           >
@@ -162,11 +328,17 @@ export default function IntegrationsPage() {
 
             <div className="flex items-center justify-between">
               {integration.status === "connected" ? (
-                <button className="text-red-600 hover:text-red-800 text-sm font-medium">
-                  Disconnect
-                </button>
+                <div className="text-sm text-green-600 font-medium">
+                  ✓ Connected
+                </div>
               ) : integration.status === "available" ? (
-                <button className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 text-sm font-medium">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedIntegration(integration.id);
+                  }}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 text-sm font-medium"
+                >
                   Connect
                 </button>
               ) : (
@@ -242,8 +414,8 @@ export default function IntegrationsPage() {
 
         <p className="text-gray-600 text-sm mb-4">
           For now, you can manually upload CSV files with your feedback data.
-          Once integrations are available, you'll be able to connect your tools
-          for automatic data collection.
+          Once integrations are available, you&apos;ll be able to connect your
+          tools for automatic data collection.
         </p>
 
         <a
